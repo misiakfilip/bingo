@@ -50,7 +50,7 @@ No backend or additional setup is required — it runs directly in the browser.
 ## File Structure
 
 ```
-Informatics-Bingo/
+bingo/
 │
 ├─ index.html           # Main HTML file
 ├─ README.md            # This file
