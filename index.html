@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Bingo Informatyczne</title>
+  <audio id="soundCorrect" src="sounds/correct.mp3" preload="auto"></audio>
+  <audio id="soundWrong" src="sounds/wrong.mp3" preload="auto"></audio>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Rubik', sans-serif;
+      text-align: center;
+      background: linear-gradient(to right, #eef2f3, #8e9eab);
+      padding: 30px 15px;
+      margin: 0;
+      max-width: 1000px;
+      margin-left: auto;
+      margin-right: auto;
+      transition: background 0.5s, color 0.5s;
+    }
+    h1 {
+      color: #4a90e2;
+      animation: float 3s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    .bingo {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(60px, 0.115fr));
+      grid-gap: 1px;
+      justify-content: center;
+      margin-top: 20px;
+      max-width: 90vw;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .cell {
+      aspect-ratio: 1;
+      background: white;
+      border: 2px solid #4a90e2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(5px, 3vw, 14px);
+      padding: 5px;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s, color 0.2s, transform 0.2s;
+    }
+    .cell:hover { transform: scale(1.05); }
+    .cell.selected {
+      background: #4a90e2;
+      color: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      transform: scale(1.05);
+    }
+    .scoreboard, .controls {
+      margin-top: 20px 0;
+      font-size: 18px;
+      color: #333;
+    }
+    .controls button {
+      margin: 0 5px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #4a90e2;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .controls button:hover { background: #357ABD; }
+    .confetti {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    #finalScreen {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(255,255,255,0.9);
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 1001;
+    }
+    #finalScreen h2 { font-size: 32px; margin-bottom: 20px; }
+    .dark { background: #121212; color: #eee; }
+    table { width: 80%; max-width: 500px; margin: 30px auto; border-collapse: collapse; }
+    th, td { padding: 10px; border: 1px solid #ccc; text-align: left; font-size: 16px; }
+    th { background-color: #4a90e2; color: white; }
+    .modal { display: none; position: fixed; left:0; top:0; width:100%; height:100%; overflow:auto; background-color: rgba(0,0,0,0.6); justify-content:center; align-items:center; z-index:2000; animation: fadeIn 0.3s ease forwards; }
+    .modal-content { background:#fff; padding:25px 20px; border-radius:15px; margin:10% auto; border:1px solid #888; width:80%; max-width:500px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.3); transform:scale(0.9); opacity:0; }
+    .modal-content.animate-pop { animation: popUp 0.4s ease forwards; }
+    #modal-img { max-width:90vw; max-height:70vh; }
+    .close-button { background-color:#999; margin-top:15px; }
+    .close-button:hover { background-color:#777; }
+    @keyframes fadeIn { from {background-color: rgba(0,0,0,0);} to {background-color: rgba(0,0,0,0.6);} }
+    @keyframes popUp { from {opacity:0; transform:scale(0.8);} to {opacity:1; transform:scale(1);} }
+  </style>
+</head>
+<body>
+  <h1>Bingo Informatyczne</h1>
+  <div class="controls">
+    <button onclick="toggleDarkMode()">🌙 Zmień motyw</button>
+    <button onclick="restartGame()">🔁 Nowa plansza</button>
+  </div>
+  <p>Kliknij w pole, aby je zaznaczyć. Traf 5 w linii!</p>
+  <div class="bingo" id="bingo"></div>
+  <div class="scoreboard">Zaznaczone pola: <span id="count">0</span>/25</div>
+  <audio id="winSound" src="sounds/win.mp3"></audio>
+  <canvas class="confetti" id="confetti"></canvas>
+  <div id="finalScreen">
+    <h2>🎉 BINGO! Gratulacje! Ukończyłeś planszę!</h2>
+    <button onclick="restartGame()">Zagraj ponownie</button>
+  </div>
+
+  <script>
+    const hasWon = { value: false };
+    const countSpan = document.getElementById("count");
+    const finalScreen = document.getElementById("finalScreen");
+    const winSound = document.getElementById("winSound");
+
+    const phrases = [
+      "JavaScript", "Python", "HTML", "CSS", "Node.js",
+      "React", "Vue", "Angular", "SQL", "NoSQL",
+      "Git", "Docker", "Kubernetes", "API", "JSON",
+      "REST", "GraphQL", "VSCode", "Linux", "Windows",
+      "Linux Terminal", "OOP", "MVC", "Regex", "Algorithm"
+    ];
+
+    function saveGameState() {
+      const cells = document.querySelectorAll('.cell');
+      const gameState = {
+        phrases: Array.from(cells).map(cell => cell.textContent),
+        selected: Array.from(cells).map(cell => cell.classList.contains('selected'))
+      };
+      localStorage.setItem('bingoGameState', JSON.stringify(gameState));
+    }
+
+    function loadGameState() {
+      const savedState = localStorage.getItem('bingoGameState');
+      if (!savedState) return null;
+      return JSON.parse(savedState);
+    }
+
+    function createBoard() {
+      const bingo = document.getElementById("bingo");
+      bingo.innerHTML = "";
+      hasWon.value = false;
+      finalScreen.style.display = "none";
+      
+      const savedState = loadGameState();
+      let currentPhrases = [];
+      let selectedIndices = [];
+      
+      if (savedState) {
+        currentPhrases = savedState.phrases;
+        selectedIndices = savedState.selected.map((s,i)=>s?i:null).filter(i=>i!==null);
+      } else {
+        currentPhrases = [...phrases].sort(()=>Math.random()-0.5);
+      }
+
+      for (let i = 0; i < 25; i++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.textContent = currentPhrases[i];
+        if (selectedIndices.includes(i)) cell.classList.add("selected");
+        cell.addEventListener("click", ()=>{
+          cell.classList.toggle("selected");
+          updateCount();
+          saveGameState();
+          if(!hasWon.value && checkWin()){
+            hasWon.value=true;
+            if(winSound) winSound.play();
+            launchConfetti();
+            finalScreen.style.display="flex";
+          }
+        });
+        bingo.appendChild(cell);
+      }
+      updateCount();
+    }
+
+    function updateCount() {
+      const count = document.querySelectorAll(".cell.selected").length;
+      countSpan.textContent = count;
+    }
+
+    function checkWin() {
+      const cells = document.querySelectorAll(".cell");
+      const grid = [...Array(5)].map((_,i)=>[...Array(5)].map((_,j)=>cells[i*5+j].classList.contains("selected")));
+      for(let i=0;i<5;i++){if(grid[i].every(c=>c)) return true; if(grid.map(row=>row[i]).every(c=>c)) return true;}
+      if([0,1,2,3,4].every(i=>grid[i][i])) return true;
+      if([0,1,2,3,4].every(i=>grid[i][4-i])) return true;
+      return false;
+    }
+
+    function launchConfetti() {
+      const canvas = document.getElementById("confetti");
+      const ctx = canvas.getContext("2d");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      let pieces = [];
+      for(let i=0;i<100;i++){
+        pieces.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height-canvas.height,w:5+Math.random()*5,h:10+Math.random()*10,dx:-2+Math.random()*4,dy:2+Math.random()*3,color:`hsl(${Math.random()*360},100%,50%)`});
+      }
+      function draw(){ctx.clearRect(0,0,canvas.width,canvas.height); for(let p of pieces){ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.w,p.h);p.x+=p.dx;p.y+=p.dy;if(p.y>canvas.height)p.y=-p.h;} requestAnimationFrame(draw);}
+      draw();
+      setTimeout(()=>{pieces=[];ctx.clearRect(0,0,canvas.width,canvas.height);},5000);
+    }
+
+    function restartGame(){
+      localStorage.removeItem('bingoGameState');
+      createBoard();
+    }
+
+    function toggleDarkMode(){document.body.classList.toggle('dark');}
+
+    createBoard();
+  </script>
+
+  <h2>Najlepsi gracze</h2>
+  <table>
+    <tr><th>Gracz</th><th>Czas</th></tr>
+    <tr><td>Anonim</td><td>0:00</td></tr>
+  </table>
+
+  <h2>Cytaty informatyczne</h2>
+  <p id="cytat"></p>
+  <button onclick="losujCytat()">Losuj cytat</button>
+
+  <script>
+    const cytaty = [
+      "Hello World!", "Keep Calm and Code On", "Segmentation Fault",
+      "No bug, no glory", "Stay hydrated while coding", "404 Not Found",
+      "Commit early, commit often", "Refactor all the things", "Use meaningful variable names",
+      "Debugging is like being a detective"
+    ];
+    function losujCytat(){
+      const index = Math.floor(Math.random()*cytaty.length);
+      document.getElementById("cytat").innerText=cytaty[index];
+    }
+  </script>
+
+  <h2>Quiz informatyczny</h2>
+  <button onclick="quiz()">Sprawdź wiedzę informatyczną!</button>
+
+  <div id="quizModal" class="modal">
+    <div class="modal-content animate-pop" id="quizContent">
+      <h3 id="quizQuestion">Pytanie</h3>
+      <div id="quizAnswers"></div>
+      <button onclick="closeQuizModal()" class="close-button">Zamknij</button>
+    </div>
+  </div>
+
+  <script>
+    const pytania = [
+      { pytanie:"Co oznacza skrót HTML?", odpowiedzi:["HyperText Markup Language","Hyper Tool Markup Link","HighText Markup Language","HyperText Machine Language"], poprawna:"HyperText Markup Language"},
+      { pytanie:"Jaki język jest używany do stylowania stron?", odpowiedzi:["CSS","C++","Python","SQL"], poprawna:"CSS"},
+      { pytanie:"Co kontroluje przepływ wersji w projektach?", odpowiedzi:["Git","Docker","React","SQL"], poprawna:"Git"},
+      { pytanie:"Co oznacza skrót API?", odpowiedzi:["Application Programming Interface","Application Programming Input","Advanced Programming Interface","Automated Programming Interface"], poprawna:"Application Programming Interface"},
+      { pytanie:"Jaki jest najpopularniejszy system operacyjny?", odpowiedzi:["Linux","Windows","MS-DOS","Android"], poprawna:"Windows"}
+    ];
+
+    function quiz(){
+      const losowe = pytania[Math.floor(Math.random()*pytania.length)];
+      const modal=document.getElementById("quizModal");
+      const questionElem=document.getElementById("quizQuestion");
+      const answersElem=document.getElementById("quizAnswers");
+      questionElem.textContent=losowe.pytanie;
+      answersElem.innerHTML="";
+      losowe.odpowiedzi.forEach(odp=>{
+        const btn=document.createElement("button");
+        btn.textContent=odp;
+        btn.style.display="block";
+        btn.style.margin="5px auto";
+        btn.onclick=()=>{
+          if(odp===losowe.poprawna){alert("✅ Dobra odpowiedź!");}
+          else{alert(`❌ Zła odpowiedź. Prawidłowa: ${losowe.poprawna}`);}
+          closeQuizModal();
+        };
+        answersElem.appendChild(btn);
+      });
+      modal.style.display="flex";
+    }
+
+    function closeQuizModal(){document.getElementById("quizModal").style.display="none";}
+  </script>
+</body>
+</html>
